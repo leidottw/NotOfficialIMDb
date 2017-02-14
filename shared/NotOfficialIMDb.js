@@ -30,6 +30,96 @@ cmd.command('searchmovie')
     .option('-t --title <title>', 'title')
     .action(function(options) {
         if(options.title) {
+            request(`https://www.google.com.tw/search?q=site:www.imdb.com/title+${encodeURIComponent(options.title)}`, function(error, resp, body) {
+                if(!error && resp.statusCode === 200) {
+                    let taskList = [],
+                        movielist = [],
+                        document = jsdom(body);
+
+                    Array.prototype.forEach.call(document.querySelectorAll('#ires .g'), function(result, index) {
+                        let url = 'http://' + result.querySelector('cite').textContent;
+
+                        if(/www.imdb.com\/title\/tt\d+\/$/.test(url)) {
+                            taskList.push(new Promise(function(resolve, reject) {
+
+                                request(url, function(error, resp, body) {
+                                    if(!error && resp.statusCode === 200) {
+                                        let document = jsdom(body);
+
+                                        movielist.push({
+                                            movie: [
+                                                {
+                                                    _attr: {
+                                                        rank: index
+                                                    }
+                                                },
+                                                {
+                                                    url: {
+                                                        _cdata: (document.querySelector('.poster [itemprop="image"]')) ? document.querySelector('.poster [itemprop="image"]').src : ''
+                                                    }
+                                                },
+                                                {
+                                                    id: {
+                                                        _cdata: url.match(/www.imdb.com\/title\/(tt\d+)\/$/)[1]
+                                                    }
+                                                },
+                                                {
+                                                    title: {
+                                                        _cdata: (document.querySelector('.title_wrapper [itemprop=name]')) ? document.querySelector('.title_wrapper [itemprop=name]').firstChild.textContent.trim() : ''
+                                                    }
+                                                },
+                                                {
+                                                    year: {
+                                                        _cdata: (document.querySelector('#titleYear')) ? document.querySelector('#titleYear').textContent.replace(/\D/g, '') : ''
+                                                    }
+                                                },
+                                                {
+                                                    outline: {
+                                                        _cdata: (document.querySelector('[itemprop="description"]')) ? document.querySelector('[itemprop="description"]').textContent.trim() : ''
+                                                    }
+                                                }
+                                            ]
+                                        });
+                                        resolve();
+                                    } else {
+                                        reject();
+                                    }
+                                });
+                            }));
+                        }
+                    });
+
+                    Promise.all(taskList).then(function() {
+                        movielist.sort(function(movieA, movieB) {
+                            return +movieA.movie[0]._attr.rank > +movieB.movie[0]._attr.rank;
+                        });
+
+                        let xmlResult = xml({movielist: movielist}, {
+                            declaration: {
+                                encoding: 'UTF-8'
+                            },
+                            indent: true
+                        });
+
+                        if(cmd.out) {
+                            fs.writeFileSync(cmd.out, xmlResult);
+                            process.exit(0);
+                        } else {
+                            console.log(xmlResult);
+                            process.exit(0);
+                        }
+                    });
+                }
+            });
+        }
+    })
+
+cmd.command('searchmovie.bak')
+    .allowUnknownOption()
+    .description('search movie list')
+    .option('-t --title <title>', 'title')
+    .action(function(options) {
+        if(options.title) {
             request(`https://www.googleapis.com/customsearch/v1?key=AIzaSyC-u6DT7yqqGpWmm2pgDpslkh4CxX6LysU&cx=005198342056190109795:nxd_7xdatds&q=${encodeURIComponent(options.title)}`, function(error, resp, body) {
                 if(!error && resp.statusCode === 200) {
                     let movielist = [],
@@ -161,6 +251,11 @@ cmd.command('getmovieinfobyid')
                             {
                                 poster: {
                                     _cdata: (document.querySelector('.poster [itemprop="image"]')) ? document.querySelector('.poster [itemprop="image"]').src : ''
+                                }
+                            },
+                            {
+                                outline: {
+                                    _cdata: (document.querySelector('[itemprop="description"]')) ? document.querySelector('[itemprop="description"]').textContent.trim() : ''
                                 }
                             }
                         ]
